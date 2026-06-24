@@ -4,13 +4,15 @@
 # ----------------------------------------------------------------------------
 #  無料ゲーム機（ESP32なし・コインなし・払い出し記録なし）用。前の機体を
 #  クローンして作ったため hostname / machine-id / SSH鍵 が重複している状態を、
-#  各機で1回実行して解消する。ゲーム本体や autostart には触らない。
+#  各機で1回実行して解消する。ゲーム本体や autostart（ゲーム選択）には触らない。
+#  あわせてキオスク硬化（kiosk_harden.sh）を実行し、ゲーム上に WiFi/認証ダイアログ
+#  が出る原因（RPi標準パネル等）を停止する。
 #
 #  使い方:
 #    sudo bash freegame_setup.sh                 # ホスト名を CPUシリアルから自動生成
 #    sudo bash freegame_setup.sh <ホスト名>      # ホスト名を明示（例 pinball-01）
 #
-#  実行後 `sudo reboot`。同一LANに複数つないでも衝突しなくなる。
+#  実行後 `sudo reboot`。同一LANに複数つないでも衝突せず、ダイアログも出なくなる。
 # ============================================================================
 set -euo pipefail
 [ "$(id -u)" = "0" ] || { echo "!! root で実行してください: sudo bash $0 $*"; exit 1; }
@@ -32,12 +34,13 @@ echo " 固有値の再生成:"
 echo "   ホスト名     : $OLD_HOST -> $HOST"
 echo "   machine-id   : 再生成"
 echo "   SSHホスト鍵  : 再生成"
+echo "   キオスク硬化 : WiFi/認証ダイアログ源を停止（パネル等）"
 echo "============================================================"
 read -r -p "実行しますか? [y/N] " ans
 [ "$ans" = "y" ] || [ "$ans" = "Y" ] || { echo "中止しました。"; exit 0; }
 
 # --- 1. ホスト名 -----------------------------------------------------------
-echo "[1/3] ホスト名を $HOST に設定"
+echo "[1/4] ホスト名を $HOST に設定"
 hostnamectl set-hostname "$HOST"
 if grep -qE '^\s*127\.0\.1\.1' /etc/hosts; then
   sed -i -E "s/^(\s*127\.0\.1\.1\s+).*/\1$HOST/" /etc/hosts
@@ -46,17 +49,27 @@ else
 fi
 
 # --- 2. machine-id ---------------------------------------------------------
-echo "[2/3] machine-id を再生成"
+echo "[2/4] machine-id を再生成"
 rm -f /etc/machine-id /var/lib/dbus/machine-id
 systemd-machine-id-setup >/dev/null
 ln -sf /etc/machine-id /var/lib/dbus/machine-id
 echo "      new: $(cat /etc/machine-id)"
 
 # --- 3. SSH ホスト鍵 -------------------------------------------------------
-echo "[3/3] SSH ホスト鍵を再生成"
+echo "[3/4] SSH ホスト鍵を再生成"
 rm -f /etc/ssh/ssh_host_*
 ssh-keygen -A >/dev/null
 echo "      $(ls /etc/ssh/ssh_host_*_key 2>/dev/null | wc -l) 本 再生成"
+
+# --- 4. キオスク硬化（ダイアログ源の停止） ---------------------------------
+echo "[4/4] キオスク硬化（WiFi/認証ダイアログ源を停止）"
+HARDEN="$(dirname "$0")/kiosk_harden.sh"
+if [ -f "$HARDEN" ]; then
+  # root のまま呼ぶ。kiosk_harden 側が SUDO_USER(=実行者) の home を対象にする。
+  bash "$HARDEN" --apply | sed 's/^/      /'
+else
+  echo "      !! $HARDEN が見つかりません。キオスク硬化はスキップ。"
+fi
 
 echo "============================================================"
 echo " 完了。再起動で反映:  sudo reboot"
