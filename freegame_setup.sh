@@ -6,7 +6,8 @@
 #  クローンして作ったため hostname / machine-id / SSH鍵 が重複している状態を、
 #  各機で1回実行して解消する。ゲーム本体や autostart（ゲーム選択）には触らない。
 #  あわせてキオスク硬化（kiosk_harden.sh）を実行し、ゲーム上に WiFi/認証ダイアログ
-#  が出る原因（RPi標準パネル等）を停止する。
+#  が出る原因をパネル設定から除く（パネル本体・スタートメニューは残すので現地GUI
+#  保守は可能。除去するのは netman/connect/bluetooth/updater ウィジェットのみ）。
 #
 #  使い方:
 #    sudo bash freegame_setup.sh                 # ホスト名を CPUシリアルから自動生成
@@ -34,7 +35,7 @@ echo " 固有値の再生成:"
 echo "   ホスト名     : $OLD_HOST -> $HOST"
 echo "   machine-id   : 再生成"
 echo "   SSHホスト鍵  : 再生成"
-echo "   キオスク硬化 : WiFi/認証ダイアログ源を停止（パネル等）"
+echo "   キオスク硬化 : ダイアログ源ウィジェットを除去（パネル本体は残す）"
 echo "============================================================"
 read -r -p "実行しますか? [y/N] " ans
 [ "$ans" = "y" ] || [ "$ans" = "Y" ] || { echo "中止しました。"; exit 0; }
@@ -62,7 +63,7 @@ ssh-keygen -A >/dev/null
 echo "      $(ls /etc/ssh/ssh_host_*_key 2>/dev/null | wc -l) 本 再生成"
 
 # --- 4. キオスク硬化（ダイアログ源の停止） ---------------------------------
-echo "[4/4] キオスク硬化（WiFi/認証ダイアログ源を停止）"
+echo "[4/4] キオスク硬化（パネルは残し WiFi/更新等のダイアログ源ウィジェットを除去）"
 HARDEN="$(dirname "$0")/kiosk_harden.sh"
 if [ -f "$HARDEN" ]; then
   # root のまま呼ぶ。kiosk_harden 側が SUDO_USER(=実行者) の home を対象にする。
