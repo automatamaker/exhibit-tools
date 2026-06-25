@@ -14,6 +14,8 @@
 #      - connect  … RPi Connect（リモート接続のサインイン等）
 #      - bluetooth… Bluetooth ペアリングダイアログ
 #      - updater  … 「新しいアップデートがあります」通知
+#    あわせて、クローンで焼き込まれた Chromium のシングルトン残骸を掃除する
+#    （後述 clear_browser_singletons。パネルの地球儀で Chromium が開かない事象を防ぐ）。
 #    ★ netman（WiFi 接続先を選ぶアイコン）は **残す**。各地に分散設置したとき、
 #      現地でキーボード/マウス→パネルのWiFiアイコンから接続先を選べる必要があるため
 #      （当初は元凶として外したが、接続先選択UIまで消える副作用が大きく、残す方針へ）。
@@ -117,11 +119,29 @@ restore_old_disables() {
   done
 }
 
+# クローン残骸の掃除: Chromium のシングルトン(ロック/ソケット/クッキー)を削除する。
+# マスターを Chromium 起動中のままクローンすると、起動中インスタンスを指す
+# Singleton{Lock,Socket,Cookie} がプロファイルごと焼き込まれる。クローン機では
+# その通信相手(SingletonSocket の実体 /tmp/...)が存在しないため、Chromium 起動時に
+# 「Opening in existing browser session」で既存へ委譲しようとして失敗し、窓が出ない
+# ＝パネルの地球儀(x-www-browser)を押しても何も起きない事象になる。削除すれば次回
+# 起動時に Chromium が作り直すので無害。冪等。各筐体ユーザ($TARGET_HOME)のプロファイル対象。
+clear_browser_singletons() {
+  local prof="$TARGET_HOME/.config/chromium"
+  if [ -d "$prof" ]; then
+    $SUDO rm -f "$prof"/Singleton* 2>/dev/null || true
+    echo "  [browser] $prof の Singleton* を掃除（地球儀から Chromium が開かない事象の防止）"
+  fi
+}
+
 apply() {
   echo "== キオスク硬化: パネルは残し、ダイアログ源ウィジェットだけ除去（対象ユーザ: $TARGET_USER）=="
 
   # --- 0. 旧版（パネル丸ごと無効化）からの移行を先に処理 ---
   restore_old_disables
+
+  # --- 0b. クローンで焼き込まれた Chromium シングルトン残骸を掃除 ---
+  clear_browser_singletons
 
   # --- 1. パネル設定: KILL_WIDGETS を除いた版をユーザ設定に書き出す ---
   if [ ! -f "$SYS_PANEL" ]; then
