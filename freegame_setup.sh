@@ -6,8 +6,8 @@
 #  クローンして作ったため hostname / machine-id / SSH鍵 が重複している状態を、
 #  各機で1回実行して解消する。ゲーム本体や autostart（ゲーム選択）には触らない。
 #  あわせてキオスク硬化（kiosk_harden.sh）を実行し、ゲーム上に WiFi/認証ダイアログ
-#  が出る原因をパネル設定から除く（パネル本体・スタートメニューは残すので現地GUI
-#  保守は可能。除去するのは netman/connect/bluetooth/updater ウィジェットのみ）。
+#  が出る原因をパネル設定から除く（パネル本体・スタートメニュー・WiFiアイコンは残すので
+#  現地GUI保守・WiFi接続先選択は可能。除去するのは connect/bluetooth/updater のみ）。
 #
 #  使い方:
 #    sudo bash freegame_setup.sh                 # ホスト名を CPUシリアルから自動生成

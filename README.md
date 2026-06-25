@@ -46,7 +46,7 @@ sudo reboot
 |---|---|
 | `check_identity.sh` | hostname / machine-id / SSH鍵指紋 / CPUシリアル / MAC を表示（読み取り専用の診断） |
 | `freegame_setup.sh` | hostname・machine-id・SSHホスト鍵を各機ごとに再生成し、最後に `kiosk_harden.sh` を適用 |
-| `kiosk_harden.sh` | ゲーム上に出る WiFi/認証ダイアログの源（パネルの netman/connect/bluetooth/updater ウィジェット）だけをパネル設定から除く。パネル本体・スタートメニューは残す。冪等・`--revert` 可 |
+| `kiosk_harden.sh` | パネルの `connect`/`bluetooth`/`updater` ウィジェットだけをパネル設定から除く。パネル本体・スタートメニュー・**WiFiアイコン(netman)** は残す（現地でWiFi接続先を選べるように）。冪等・`--revert` 可 |
 
 ## キオスク硬化（kiosk_harden.sh）
 
@@ -58,16 +58,19 @@ sudo bash kiosk_harden.sh            # 適用（freegame_setup.sh が内部で�
 bash kiosk_harden.sh --revert        # 既定パネル（全ウィジェット）に戻す
 ```
 
-- **何をするか（2026-06-25 改訂・外科的最小化）**: 上部パネル（wf-panel-pi）とデスクトップは
-  **残したまま**、ダイアログを出すウィジェットだけをユーザのパネル設定
+- **何をするか（2026-06-25 再改訂・外科的最小化）**: 上部パネル（wf-panel-pi）とデスクトップは
+  **残したまま**、不要/ダイアログを出すウィジェットだけをユーザのパネル設定
   `~/.config/wf-panel-pi/wf-panel-pi.ini`（システム既定 `/etc/xdg/wf-panel-pi/wf-panel-pi.ini`
-  を上書き）から除去する。除去対象は `netman`（WiFi接続UI＝元凶）・`connect`（RPi Connect）・
-  `bluetooth`・`updater`（更新通知）。**スタートメニュー(smenu)・時計・音量・電源・USB取り出し等は温存**。
+  を上書き）から除去する。除去対象は `connect`（RPi Connect）・`bluetooth`・`updater`（更新通知）。
+  **スタートメニュー(smenu)・時計・音量・電源・USB取り出し・WiFiアイコン(netman) は温存**。
+- **WiFiアイコン(netman)は残す**: 各地に分散設置したとき、現地でキーボード/マウス→パネルの
+  WiFiアイコンから接続先を選べる必要があるため。当初は「ゲーム中にWiFiダイアログを出す元凶」
+  として外したが、接続先選択UIまで消える副作用が大きく、残す方針に変更。CLI派は `sudo nmtui` /
+  `nmcli device wifi connect` でも選べる。**もしゲーム中ダイアログ再発時は別途対処**。
 - **なぜパネルを丸ごと止めないか**: パネルを消すと現地でキーボード/マウス→GUI 保守が
-  できなくなる（展示後に各地へ分散設置する想定では SSH より現地GUIの方が楽）。だから
-  操作UIは残し、ダイアログ源のウィジェットだけ外す。
+  できなくなる（展示後に各地へ分散設置する想定では SSH より現地GUIの方が楽）。
 - **WiFi は切れない**: NetworkManager デーモンは別に常駐し、保存接続（psk-flags=0=平文
-  システム保存）を自律再接続するため。netman ウィジェットは「表示/操作UI」役にすぎない。
+  システム保存）を自律再接続するため。
 - **旧版からの移行**: 旧 kiosk_harden はパネル/デスクトップ自体を無効化し polkit を
   マスクしていた。本版を上書き実行すると、それらを取り消して（`.orig` 復元・マスク解除）
   ウィジェット除去方式へ移行する。`--revert` は既定パネルへ戻す。

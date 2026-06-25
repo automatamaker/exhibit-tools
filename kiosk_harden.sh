@@ -8,17 +8,20 @@
 #    時計・音量など）とデスクトップは残し、現地でキーボード/マウス→GUI で
 #    保守できる操作性を保つ。
 #
-#  方針（2026-06-25 改訂・外科的最小化）:
+#  方針（2026-06-25 再改訂・外科的最小化）:
 #    パネル(wf-panel-pi)を丸ごと止めるのは「やりすぎ」。現地GUI保守ができなく
-#    なるため。代わりに、ダイアログを出すパネルウィジェットだけを設定から外す:
-#      - netman   … WiFi 接続先を尋ねるネットワークUI（=今回の元凶）
+#    なるため。代わりに、ダイアログを出す/不要なウィジェットだけを設定から外す:
 #      - connect  … RPi Connect（リモート接続のサインイン等）
 #      - bluetooth… Bluetooth ペアリングダイアログ
 #      - updater  … 「新しいアップデートがあります」通知
-#    スタートメニュー(smenu)・時計・音量・電源・USB取り出し等は残す。
-#    NetworkManager デーモンは別に常駐し続けるので、netman ウィジェットを外しても
-#    WiFi 再接続は自律維持される（保存接続は psk-flags=0 = 平文システム保存で
-#    対話不要）。パネルのネットワーク部分は「表示/操作UI」役にすぎない。
+#    ★ netman（WiFi 接続先を選ぶアイコン）は **残す**。各地に分散設置したとき、
+#      現地でキーボード/マウス→パネルのWiFiアイコンから接続先を選べる必要があるため
+#      （当初は元凶として外したが、接続先選択UIまで消える副作用が大きく、残す方針へ）。
+#    スタートメニュー(smenu)・時計・音量・電源・USB取り出し・WiFi(netman) は残す。
+#    NetworkManager デーモンは常駐し保存接続を自律再接続する（psk-flags=0=平文システム
+#    保存で対話不要）。netman は普段「表示/手動切替UI」役。
+#    ※ もしゲーム中に WiFi ダイアログが前面に出る事象が再発したら、その時に改めて
+#      対処する（netman を外す/ダイアログを抑止する等）。現状は接続先選択の操作性を優先。
 #
 #  仕組み:
 #    パネル設定はユーザ ~/.config/wf-panel-pi/wf-panel-pi.ini がシステム既定
@@ -61,8 +64,8 @@ SYS_AUTOSTART=/etc/xdg/labwc/autostart
 USER_AUTOSTART_DIR="$TARGET_HOME/.config/autostart"
 SYS_PANEL=/etc/xdg/wf-panel-pi/wf-panel-pi.ini
 USER_PANEL="$TARGET_HOME/.config/wf-panel-pi/wf-panel-pi.ini"
-# ダイアログを出す（or 不要な通知の）パネルウィジェット。これだけを除去する。
-KILL_WIDGETS=(netman connect bluetooth updater)
+# 除去するパネルウィジェット。netman(WiFi接続UI)は接続先選択に要るので残す。
+KILL_WIDGETS=(connect bluetooth updater)
 # 旧版がマスクしていた polkit エージェント（本版では解除する）
 OLD_MASK_AGENTS=(lxpolkit polkit-mate-authentication-agent-1)
 MARK="kiosk_harden"
