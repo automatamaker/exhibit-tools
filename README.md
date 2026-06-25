@@ -46,27 +46,33 @@ sudo reboot
 |---|---|
 | `check_identity.sh` | hostname / machine-id / SSH鍵指紋 / CPUシリアル / MAC を表示（読み取り専用の診断） |
 | `freegame_setup.sh` | hostname・machine-id・SSHホスト鍵を各機ごとに再生成し、最後に `kiosk_harden.sh` を適用 |
-| `kiosk_harden.sh` | ゲーム上に出る WiFi/認証ダイアログの源（RPi標準パネル wf-panel-pi 等）を停止。冪等・`--revert` 可 |
+| `kiosk_harden.sh` | ゲーム上に出る WiFi/認証ダイアログの源（パネルの netman/connect/bluetooth/updater ウィジェット）だけをパネル設定から除く。パネル本体・スタートメニューは残す。冪等・`--revert` 可 |
 
 ## キオスク硬化（kiosk_harden.sh）
 
-ゲーム実行中に「WiFi 接続先を尋ねるウィンドウ」が前面に出て、キーボード/マウスの
-無い筐体で操作不能になる事象の根本対策。`freegame_setup.sh` から自動で呼ばれるので
-通常は個別実行不要だが、単体でも使える。
+ゲーム実行中に「WiFi 接続先を尋ねるウィンドウ」が前面に出て操作不能になる事象の
+根本対策。`freegame_setup.sh` から自動で呼ばれるので通常は個別実行不要だが、単体でも使える。
 
 ```bash
 sudo bash kiosk_harden.sh            # 適用（freegame_setup.sh が内部で実行）
-bash kiosk_harden.sh --revert        # 元に戻す
+bash kiosk_harden.sh --revert        # 既定パネル（全ウィジェット）に戻す
 ```
 
-- **何をするか**: `/etc/xdg/labwc/autostart` の `wf-panel-pi`（WiFi/ネットワークUIの源）と
-  `pcmanfm-pi`（デスクトップ）をコメントアウトし、polkit 認証エージェントを
-  `~/.config/autostart` で Hidden 化する。`kanshi`（画面）・`pwrkey`（電源キー無効化）・
-  `autotouch`（タッチ構成）等の筐体必須は温存。
+- **何をするか（2026-06-25 改訂・外科的最小化）**: 上部パネル（wf-panel-pi）とデスクトップは
+  **残したまま**、ダイアログを出すウィジェットだけをユーザのパネル設定
+  `~/.config/wf-panel-pi/wf-panel-pi.ini`（システム既定 `/etc/xdg/wf-panel-pi/wf-panel-pi.ini`
+  を上書き）から除去する。除去対象は `netman`（WiFi接続UI＝元凶）・`connect`（RPi Connect）・
+  `bluetooth`・`updater`（更新通知）。**スタートメニュー(smenu)・時計・音量・電源・USB取り出し等は温存**。
+- **なぜパネルを丸ごと止めないか**: パネルを消すと現地でキーボード/マウス→GUI 保守が
+  できなくなる（展示後に各地へ分散設置する想定では SSH より現地GUIの方が楽）。だから
+  操作UIは残し、ダイアログ源のウィジェットだけ外す。
 - **WiFi は切れない**: NetworkManager デーモンは別に常駐し、保存接続（psk-flags=0=平文
-  システム保存）を自律再接続するため。パネルは「表示」役にすぎない。
-- 原本は `/etc/xdg/labwc/autostart.orig` に退避。反映は次回 labwc セッション開始
-  （再起動 or 再ログイン）から。
+  システム保存）を自律再接続するため。netman ウィジェットは「表示/操作UI」役にすぎない。
+- **旧版からの移行**: 旧 kiosk_harden はパネル/デスクトップ自体を無効化し polkit を
+  マスクしていた。本版を上書き実行すると、それらを取り消して（`.orig` 復元・マスク解除）
+  ウィジェット除去方式へ移行する。`--revert` は既定パネルへ戻す。
+- 反映は次回 labwc セッション開始（再起動/再ログイン）から。稼働中に即反映したいときは
+  `pkill -x wf-panel-pi`（lwrespawn が新設定で再起動）。
 
 ## 注意
 
