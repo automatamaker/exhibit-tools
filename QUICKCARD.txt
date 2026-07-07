@@ -3,12 +3,16 @@
 ================================================================
 
 ■ 完成機（1号機・claude あり）─────────────────
+  0) overlay が ON のときだけ、先に OFF にして再起動（この方が速い＝claude 起動は1回で済む）:
+       sudo raspi-config nonint disable_overlayfs && sudo reboot
   1) ターミナルで:
        cd ~/exhibit-tools && git pull
   2) claude を automode で起動し、こう伝えるだけ:
        この機を <ゲーム名> の1号機にして
      （例）この機を earth_defender の1号機にして
   → 公開→固有値再生成→キオスク硬化→配線→overlay ON→再起動 まで自動
+  ※ 0)をやり忘れても claude が overlay ON を検知して自動でOFF＋再起動する
+    （ただし再起動後にもう一度 claude 起動＋同じ一言が要る＝2回になる）
 
 ■ クローン機（2号機以降・claude なし）───────────────
   1) overlay が ON のときだけ、OFF にして再起動:
