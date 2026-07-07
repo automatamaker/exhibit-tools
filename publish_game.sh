@@ -26,7 +26,9 @@ set -euo pipefail
 
 # --- 設定（必要なら書き換え） ---------------------------------------------
 ORG="automatamaker"            # GitHub の owner（org/user）
-VISIBILITY="private"           # 公開範囲: private | public
+VISIBILITY="public"            # 公開範囲: public | private
+                               #   クローン機に gh が無く最新を git 取得するため展開中は public。
+                               #   全台の移植完了後に各repoを private へ戻してよい（既設機はローカル起動で影響なし）。
 MARK_BEGIN="# >>> exhibit-tools publish_game.sh >>>"
 MARK_END="# <<< exhibit-tools publish_game.sh <<<"
 

@@ -20,6 +20,10 @@
 
 完成版ゲームを持つ機体で、そのゲームを正本として公開する。
 
+> **完成機は claude が入っているので automode が最短**: `cd ~/exhibit-tools && git pull` の後 claude を
+> automode 起動し「この機を <ゲーム> の1号機にして」と伝えるだけで、下記 A＋B 相当を全自動で行う
+> （手順は `CLAUDE.md`）。以下は手動でやる場合の参照。
+
 ```bash
 # 0) オーバーレイをOFF（既にOFFならスキップ）。反映のため一度再起動。
 sudo raspi-config nonint disable_overlayfs && sudo reboot
@@ -42,30 +46,27 @@ bash publish_game.sh ~/earth_defender
 > 公開後、その完成機自身も展示機にするなら、続けて「使い方 B」を実行する（ゲームは既に
 > あるので clone は走らない）。
 
-## 使い方 B: 各機 — 展示機として仕立てる（全機で1回）
+## 使い方 B: クローン機（2号機以降・claude なし） — 貼り付け1回
 
-クローン機（および公開を終えた完成機）を、選んだゲーム専用の展示機にする。
+クローン機は claude 未導入。**exhibit-tools は public** なので、ターミナルに1行貼るだけで開始できる。
 
 ```bash
-# 0) オーバーレイをOFF（展示から下ろした直後など。反映のため一度再起動）
+# 0) オーバーレイが ON なら OFF にして再起動（反映のため）。既に OFF なら不要。
 sudo raspi-config nonint disable_overlayfs && sudo reboot
 
-# 1) exhibit-tools を取得/更新
-git clone https://github.com/automatamaker/exhibit-tools.git   # 初回。以降は git pull
-cd exhibit-tools
-
-# 2) まず内容確認（非破壊。clone/固有値/overlay/reboot を行わない）
-bash setup.sh --dry-run
-
-# 3) 本番（対話でゲームと号機を選ぶ→最終確認1回→固有値再生成・硬化・配線・overlay ON・再起動）
-bash setup.sh
+# 1) セットアップ開始（コピペ or 手打ち1回）
+bash <(curl -fsSL https://raw.githubusercontent.com/automatamaker/exhibit-tools/master/bootstrap.sh)
 ```
 
-`setup.sh` の流れ: ①ゲームを選ぶ（games.conf の一覧から番号）→ ②号機番号を入れて
-機体名 `<ゲーム名>-NN`（例 `earthdefender-02`）を決める → ③`~/<ゲーム>` が無ければ
-git clone（有れば pull 可）→ ④依存を確認、不足なら `.venv` を作って導入 → **最終確認1回** →
-⑤`~/.config/labwc/autostart` を `run_game.sh <ゲーム>` に配線（既存はバックアップ）→
-⑥`freegame_setup.sh` で hostname/machine-id/SSH鍵 を再生成＋キオスク硬化 → ⑦オーバーレイON→再起動。
+`bootstrap.sh` が exhibit-tools を取得/更新して `setup.sh` を起動する。以降は対話に従うだけ:
+①ゲームを番号で選ぶ → ②号機番号(02/03) → ③ゲームを最新へ更新（`~/<ゲーム>` が古い版なら
+`.old.<日時>` へ退避して最新を clone、無ければ clone、git 管理下なら pull）→ ④依存を確認、
+不足なら `.venv` を作って導入 → **最終確認1回** → ⑤autostart を `run_game.sh <ゲーム>` に配線 →
+⑥`freegame_setup.sh` で固有値再生成＋キオスク硬化 → ⑦オーバーレイON→再起動。
+
+> **ゲームrepo の可視性**: クローン機に gh が無く最新を git 取得するため、**展開中はゲームrepoも public**
+> にする（`publish_game.sh` は既定 public で作成）。**全台の展開が終わったら private に戻してよい**
+> （既設機はローカル起動なので影響なし。ただし後日デプロイ済み機へ修正を配るときは一時的に public が要る）。
 
 再起動後、`bash check_identity.sh` で他機と固有値が異なることを確認できる。
 
@@ -121,6 +122,7 @@ git clone（有れば pull 可）→ ④依存を確認、不足なら `.venv` �
 ## 注意
 
 - `setup.sh` / `publish_game.sh` は**オーバーレイOFF（書込可）**の状態で実行すること。
-- リポジトリは既定で **private**（`publish_game.sh` 冒頭 `VISIBILITY`）。
+- ゲームrepo は展開中は **public**（`publish_game.sh` 冒頭 `VISIBILITY`。クローン機が無認証で最新取得するため）。
+  全台展開後に private へ戻してよい。exhibit-tools 自体も public。
 - `game02` は開発機であり、展示時は別途コインゲーム化する（本リポジトリ外の手順）。無料機21台には含まない。
 - コイン機（有料ゲーム）の展開には別途 overlay + /data パーティションの手順がある（本リポジトリ外）。
