@@ -42,10 +42,13 @@ EXHIBIT_TOOLS="$(cd "$(dirname "$0")" && pwd)"
 GAMES_CONF="$EXHIBIT_TOOLS/games.conf"
 
 # --- 引数 -------------------------------------------------------------------
-DRY=0; GAME_DIR=""
+#   --dry-run : 非破壊で内容確認のみ
+#   --yes/-y  : 確認プロンプトを全て自動承認（claude が automode で駆動する時用）
+DRY=0; YES=0; GAME_DIR=""
 for a in "$@"; do
   case "$a" in
     --dry-run) DRY=1 ;;
+    --yes|-y) YES=1 ;;
     -*) echo "!! 不明なオプション: $a"; exit 1 ;;
     *) GAME_DIR="$a" ;;
   esac
@@ -69,7 +72,7 @@ if [ ! -f "$GAME_DIR/main.py" ] && ! ls "$GAME_DIR"/*.sh >/dev/null 2>&1; then
   say "!! $GAME_DIR に main.py も *.sh も見当たりません。ゲームディレクトリを間違えていませんか？"
   exit 1
 fi
-if [ "$DRY" = 0 ]; then
+if [ "$DRY" = 0 ] && [ "$YES" = 0 ]; then
   read -r -p "このディレクトリを $ORG/$GAME_NAME として公開します。よいですか? [y/N] " ans
   [ "$ans" = "y" ] || [ "$ans" = "Y" ] || { say "中止しました。"; exit 0; }
 fi
@@ -164,14 +167,14 @@ SPEC=""
 if [ "${#LAUNCHERS[@]}" -eq 1 ]; then SPEC="${LAUNCHERS[0]}"
 elif [ "${#LAUNCHERS[@]}" -gt 1 ]; then
   say "   複数のランチャ候補: ${LAUNCHERS[*]}"
-  if [ "$DRY" = 0 ]; then read -r -p "   起動に使うスクリプト名を入力 > " SPEC; else SPEC="${LAUNCHERS[0]}"; say "   (dry-run: 先頭 ${LAUNCHERS[0]} を仮採用)"; fi
+  if [ "$DRY" = 0 ] && [ "$YES" = 0 ]; then read -r -p "   起動に使うスクリプト名を入力 > " SPEC; else SPEC="${LAUNCHERS[0]}"; say "   先頭 ${LAUNCHERS[0]} を採用（違う場合は games.conf を手直し）"; fi
 elif [ -f "$GAME_DIR/main.py" ]; then SPEC="main.py"
 fi
 if [ -z "$SPEC" ]; then
-  if [ "$DRY" = 0 ]; then read -r -p "   起動指定(例 main.py / play_x.sh)を入力 > " SPEC; else SPEC="main.py"; fi
+  if [ "$DRY" = 0 ] && [ "$YES" = 0 ]; then read -r -p "   起動指定(例 main.py / play_x.sh)を入力 > " SPEC; else SPEC="main.py"; fi
 fi
-# 本番なら確認/上書き可
-if [ "$DRY" = 0 ]; then
+# 対話時のみ確認/上書き可（--yes は検出値をそのまま採用）
+if [ "$DRY" = 0 ] && [ "$YES" = 0 ]; then
   read -r -p "   起動指定を「$SPEC」で登録します。別の値なら入力、そのままなら Enter > " ov
   [ -n "$ov" ] && SPEC="$ov"
 fi
@@ -214,8 +217,10 @@ else
   git add -A
   say "   commit 対象:"; git status --short | sed 's/^/     /' | head -40
   say "   追跡サイズ(概算): $(git ls-files -z | du -ch --files0-from=- 2>/dev/null | tail -1 | cut -f1 || echo '?')"
-  read -r -p "   この内容で commit / push しますか? [y/N] " ans
-  [ "$ans" = "y" ] || [ "$ans" = "Y" ] || { say "中止しました（ローカルの .gitignore/requirements/games.conf 変更は残っています）。"; exit 0; }
+  if [ "$YES" = 0 ]; then
+    read -r -p "   この内容で commit / push しますか? [y/N] " ans
+    [ "$ans" = "y" ] || [ "$ans" = "Y" ] || { say "中止しました（ローカルの .gitignore/requirements/games.conf 変更は残っています）。"; exit 0; }
+  fi
   if ! git diff --cached --quiet; then git commit -q -m "Publish $GAME_NAME for exhibit fleet"; else say "   (commit 済み・変更なし)"; fi
   # リポジトリが既にあれば push、無ければ作成して push
   if gh repo view "$ORG/$GAME_NAME" >/dev/null 2>&1; then
@@ -238,7 +243,8 @@ else
   if ! git diff --quiet -- games.conf 2>/dev/null || [ -n "$(git status --porcelain games.conf)" ]; then
     git add games.conf
     git commit -q -m "games.conf: $GAME_NAME = $SPEC を登録"
-    read -r -p "   exhibit-tools を push しますか? [y/N] " ans
+    ans=y
+    [ "$YES" = 0 ] && read -r -p "   exhibit-tools を push しますか? [y/N] " ans
     if [ "$ans" = "y" ] || [ "$ans" = "Y" ]; then
       # 8台の完成機が順に games.conf を足すので、push前に取り込んで衝突を避ける
       git pull --rebase --autostash -q 2>/dev/null || say "   (自動pull不可。push が弾かれたら 'git -C $EXHIBIT_TOOLS pull --rebase' 後に再push)"

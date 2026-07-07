@@ -19,8 +19,24 @@
 # ============================================================================
 set -euo pipefail
 
-DRY=0
-for a in "$@"; do case "$a" in --dry-run) DRY=1 ;; *) echo "!! 不明なオプション: $a"; exit 1 ;; esac; done
+# 引数:
+#   --dry-run          選択と生成内容の確認のみ（破壊操作なし）
+#   --game <名>        ゲームを指定してメニューを省略（claude が automode で駆動する時用）
+#   --instance <NN>    号機番号を指定して質問を省略
+#   --yes              確認プロンプトを全て自動承認
+#   --no-reboot        最後の sudo reboot を行わない（overlay ON までで停止。claude が後で再起動）
+DRY=0; YES=0; NO_REBOOT=0; GAME=""; NN=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run) DRY=1 ;;
+    --yes|-y) YES=1 ;;
+    --no-reboot) NO_REBOOT=1 ;;
+    --game) GAME="${2:-}"; shift ;;
+    --instance) NN="${2:-}"; shift ;;
+    *) echo "!! 不明なオプション: $1"; exit 1 ;;
+  esac
+  shift
+done
 
 [ "$(id -u)" = 0 ] && { echo "!! root では実行しないでください。筐体ユーザで: bash setup.sh （内部で必要時に sudo します）"; exit 1; }
 
@@ -46,17 +62,25 @@ if [ "${#GAMES[@]}" -eq 0 ]; then
   echo "!! games.conf にゲームが登録されていません。先に各完成機で publish_game.sh を実行してください。"
   exit 1
 fi
-echo "============================================================"
-echo " この機体を何のゲームにしますか？"
-i=1; for g in "${GAMES[@]}"; do printf "   %2d) %s\n" "$i" "$g"; i=$((i+1)); done
-echo "============================================================"
-read -r -p "番号 > " n
-[[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le "${#GAMES[@]}" ] || { echo "!! 番号が不正です"; exit 1; }
-GAME="${GAMES[$((n-1))]}"
+if [ -n "$GAME" ]; then
+  # --game 指定: games.conf に在るか検証
+  found=0; for g in "${GAMES[@]}"; do [ "$g" = "$GAME" ] && found=1; done
+  [ "$found" = 1 ] || { echo "!! ゲーム '$GAME' は games.conf に登録されていません。登録済み: ${GAMES[*]}"; exit 1; }
+  echo "ゲーム指定: $GAME"
+else
+  echo "============================================================"
+  echo " この機体を何のゲームにしますか？"
+  i=1; for g in "${GAMES[@]}"; do printf "   %2d) %s\n" "$i" "$g"; i=$((i+1)); done
+  echo "============================================================"
+  read -r -p "番号 > " n
+  [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le "${#GAMES[@]}" ] || { echo "!! 番号が不正です"; exit 1; }
+  GAME="${GAMES[$((n-1))]}"
+fi
 
 # --- 2. 号機番号 → 機体名 <game>-NN --------------------------------------
 PREFIX="$(printf '%s' "$GAME" | tr -d '_')"     # アンダースコアは hostname 不可なので除去
-read -r -p "何号機ですか？ (例 01 / 02 / 03) > " nn
+nn="$NN"
+[ -n "$nn" ] || read -r -p "何号機ですか？ (例 01 / 02 / 03) > " nn
 nn="$(printf '%s' "$nn" | tr -cd '0-9')"; [ -n "$nn" ] || nn=1
 nn="$(printf '%02d' "$((10#$nn))")"
 HOST="${PREFIX}-${nn}"
@@ -77,10 +101,12 @@ ensure_game() {
     if [ "$DRY" = 1 ]; then echo "   (dry-run) clone は行いません"; return; fi
     git clone "$REPO" "$GAME_DIR" || { echo "!! clone 失敗（repo が未公開？ 完成機で publish_game.sh 済みか確認）"; exit 1; }
   else
-    if [ "$DRY" = 0 ]; then
+    if [ "$DRY" = 1 ]; then echo "   (dry-run) 既存ディレクトリ。pull 確認は本番のみ"
+    elif [ "$YES" = 1 ]; then echo "[取得] $GAME_DIR は既存。そのまま使用（--yes のため pull しない）"
+    else
       read -r -p "[取得] $GAME_DIR は既存。最新に git pull しますか? [y/N] " a
       if [ "$a" = "y" ] || [ "$a" = "Y" ]; then git -C "$GAME_DIR" pull --ff-only || echo "   (pull はスキップ/失敗。既存のまま続行)"; fi
-    else echo "   (dry-run) 既存ディレクトリ。pull 確認は本番のみ"; fi
+    fi
   fi
 }
 ensure_game
@@ -102,8 +128,10 @@ dep_check() {
   fi
   echo "[依存] 不足: ${missing[*]}"
   if [ "$DRY" = 1 ]; then echo "   (dry-run) 本番では venv を作って導入します"; return; fi
-  read -r -p "   $GAME_DIR/.venv を作成して導入しますか? [Y/n] " a
-  if [ "$a" = "n" ] || [ "$a" = "N" ]; then echo "   スキップ（起動しない可能性あり。手動導入してください）"; return; fi
+  if [ "$YES" = 0 ]; then
+    read -r -p "   $GAME_DIR/.venv を作成して導入しますか? [Y/n] " a
+    if [ "$a" = "n" ] || [ "$a" = "N" ]; then echo "   スキップ（起動しない可能性あり。手動導入してください）"; return; fi
+  fi
   python3 -m venv "$GAME_DIR/.venv"
   # pygame 等は system-site があると衝突しにくいが、確実性優先で venv 単独に入れる
   if [ -f "$GAME_DIR/requirements.txt" ]; then
@@ -127,14 +155,16 @@ echo "   autostart 配線 : $AUTOSTART を↓に置換（既存はバックア�
 printf '%s\n' "$NEW_AUTOSTART" | sed 's/^/       | /'
 echo "   固有値再生成   : hostname=$HOST, machine-id, SSHホスト鍵（＋キオスク硬化）"
 echo "   オーバーレイ   : ON（sudo raspi-config nonint enable_overlayfs）"
-echo "   最後に         : sudo reboot"
+echo "   最後に         : $( [ "$NO_REBOOT" = 1 ] && echo '（--no-reboot: 再起動は保留）' || echo 'sudo reboot' )"
 echo "============================================================"
 if [ "$DRY" = 1 ]; then
   echo "※ DRY-RUN 終了。実際の書き換え/再起動は行っていません。"
   exit 0
 fi
-read -r -p "この内容で実行し、再起動しますか? [y/N] " ans
-[ "$ans" = "y" ] || [ "$ans" = "Y" ] || { echo "中止しました（clone/venv は残っています）。"; exit 0; }
+if [ "$YES" = 0 ]; then
+  read -r -p "この内容で実行し、再起動しますか? [y/N] " ans
+  [ "$ans" = "y" ] || [ "$ans" = "Y" ] || { echo "中止しました（clone/venv は残っています）。"; exit 0; }
+fi
 
 # --- 5. autostart 配線 -----------------------------------------------------
 echo "[配線] $AUTOSTART"
@@ -147,7 +177,11 @@ echo "[固有値] sudo freegame_setup.sh -y $HOST"
 sudo bash "$TOOLS/freegame_setup.sh" -y "$HOST"
 
 # --- 7. オーバーレイ ON → 再起動 -----------------------------------------
-echo "[overlay] 有効化して再起動します"
+echo "[overlay] オーバーレイを有効化"
 sudo raspi-config nonint enable_overlayfs
-echo "  再起動します..."
-sudo reboot
+if [ "$NO_REBOOT" = 1 ]; then
+  echo "[完了] --no-reboot のため再起動しません。反映するには: sudo reboot"
+else
+  echo "[reboot] 再起動します..."
+  sudo reboot
+fi
