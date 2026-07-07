@@ -1,0 +1,33 @@
+================================================================
+ 展示機セットアップ クイックカード   (github.com/automatamaker/exhibit-tools)
+================================================================
+
+■ 完成機（1号機・claude あり）─────────────────
+  1) ターミナルで:
+       cd ~/exhibit-tools && git pull
+  2) claude を automode で起動し、こう伝えるだけ:
+       この機を <ゲーム名> の1号機にして
+     （例）この機を earth_defender の1号機にして
+  → 公開→固有値再生成→キオスク硬化→配線→overlay ON→再起動 まで自動
+
+■ クローン機（2号機以降・claude なし）───────────────
+  1) overlay が ON のときだけ、OFF にして再起動:
+       sudo raspi-config nonint disable_overlayfs && sudo reboot
+  2) セットアップ開始（次のどちらか）:
+     (a) ネットから1行:
+       bash <(curl -fsSL https://raw.githubusercontent.com/automatamaker/exhibit-tools/master/bootstrap.sh)
+     (b) USB に bootstrap.sh を入れておき、それを実行（URL入力不要）:
+       bash /media/game/*/bootstrap.sh
+  3) 画面の質問に答える:
+       ゲームを番号で選ぶ → 号機番号(02 / 03) → 最終確認 y
+  → 古い版を最新へ差し替え→依存導入→固有値→硬化→配線→overlay ON→再起動 まで自動
+
+■ ゲーム名（8種）───────────────────────────
+  earth_defender   mohs_code      deep_earth      cloud_buster
+  gravity_meteor   ryuhyo_jump    aqua_solitaire  four_seasons
+
+■ メモ ─────────────────────────────────
+  ・同じゲームの号機番号を重複させない（台↔名前の対応表を手元に）
+  ・mohs_code の repo だけ先に public にする（他7つは publish 時に自動 public）
+  ・全台の展開が終わったらゲーム repo を private に戻してよい（既設機は影響なし）
+================================================================
