@@ -61,6 +61,16 @@ if grep -qE '^\s*127\.0\.1\.1' /etc/hosts; then
 else
   echo -e "127.0.1.1\t$HOST" >> /etc/hosts
 fi
+# cloud-init 対策: 一部の機体は cloud-init が毎起動で /etc/hostname を元(game02等)へ
+# 書き戻すため、hostnamectl の変更が定着しない。preserve_hostname: true で無効化する。
+# cloud-init が無い機体では未使用のファイルが1つ増えるだけで無害。
+if [ -d /etc/cloud ]; then
+  echo "      cloud-init のホスト名上書きを無効化（preserve_hostname: true）"
+  printf 'preserve_hostname: true\n' > /etc/cloud/cloud.cfg.d/99-preserve-hostname.cfg
+  if grep -q '^preserve_hostname:' /etc/cloud/cloud.cfg 2>/dev/null; then
+    sed -i 's/^preserve_hostname:.*/preserve_hostname: true/' /etc/cloud/cloud.cfg
+  fi
+fi
 
 # --- 2. machine-id ---------------------------------------------------------
 echo "[2/4] machine-id を再生成"
