@@ -205,6 +205,12 @@ mkdir -p "$(dirname "$AUTOSTART")"
 [ -f "$AUTOSTART" ] && cp -a "$AUTOSTART" "$AUTOSTART.bak.$(date +%Y%m%d-%H%M%S)"
 printf '%s\n' "$NEW_AUTOSTART" > "$AUTOSTART"
 
+# --- 5b. 二重起動源の無効化 -------------------------------------------------
+# 機体によってはゲームが /etc/xdg/labwc/autostart や XDG .desktop 等からも起動
+# される（放置すると2重起動＝片方が入力を専有し画面が遷移しない事故になる）。
+echo "[二重起動対策] 他のゲーム起動源を走査・無効化"
+bash "$TOOLS/fix_double_launch.sh" --skip-overlay-check | sed 's/^/      /' || true
+
 # --- 6. 固有値再生成＋キオスク硬化 ----------------------------------------
 echo "[固有値] sudo freegame_setup.sh -y $HOST"
 sudo bash "$TOOLS/freegame_setup.sh" -y "$HOST"
