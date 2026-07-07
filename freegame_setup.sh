@@ -54,7 +54,7 @@ else
 fi
 
 # --- 1. ホスト名 -----------------------------------------------------------
-echo "[1/4] ホスト名を $HOST に設定"
+echo "[1/5] ホスト名を $HOST に設定"
 hostnamectl set-hostname "$HOST"
 if grep -qE '^\s*127\.0\.1\.1' /etc/hosts; then
   sed -i -E "s/^(\s*127\.0\.1\.1\s+).*/\1$HOST/" /etc/hosts
@@ -73,26 +73,47 @@ if [ -d /etc/cloud ]; then
 fi
 
 # --- 2. machine-id ---------------------------------------------------------
-echo "[2/4] machine-id を再生成"
+echo "[2/5] machine-id を再生成"
 rm -f /etc/machine-id /var/lib/dbus/machine-id
 systemd-machine-id-setup >/dev/null
 ln -sf /etc/machine-id /var/lib/dbus/machine-id
 echo "      new: $(cat /etc/machine-id)"
 
 # --- 3. SSH ホスト鍵 -------------------------------------------------------
-echo "[3/4] SSH ホスト鍵を再生成"
+echo "[3/5] SSH ホスト鍵を再生成"
 rm -f /etc/ssh/ssh_host_*
 ssh-keygen -A >/dev/null
 echo "      $(ls /etc/ssh/ssh_host_*_key 2>/dev/null | wc -l) 本 再生成"
 
 # --- 4. キオスク硬化（ダイアログ源の停止） ---------------------------------
-echo "[4/4] キオスク硬化（パネルは残し WiFi/更新等のダイアログ源ウィジェットを除去）"
+echo "[4/5] キオスク硬化（パネルは残し WiFi/更新等のダイアログ源ウィジェットを除去）"
 HARDEN="$(dirname "$0")/kiosk_harden.sh"
 if [ -f "$HARDEN" ]; then
   # root のまま呼ぶ。kiosk_harden 側が SUDO_USER(=実行者) の home を対象にする。
   bash "$HARDEN" --apply | sed 's/^/      /'
 else
   echo "      !! $HARDEN が見つかりません。キオスク硬化はスキップ。"
+fi
+
+# --- 5. オーバーレイFSを実際に効かせる（kernel 6.18 対策） ------------------
+# kernel 6.18 では overlayroot が initramfs 内で overlay ドライバを見つけられず
+# マウントに失敗し、GUI/get_overlay_now が「ON」表示でも実際は ext4（無保護）になる。
+# overlay モジュールを initramfs に明示ロードさせて解消する（overlayroot 環境でのみ
+# 意味を持ち、無い機体では無害）。実機テストで「書込が再起動で消える＝本物のON」を確認済み。
+echo "[5/5] オーバーレイFSを実際に効かせる（initramfs に overlay モジュールを追加）"
+if [ -f /etc/initramfs-tools/modules ]; then
+  if ! grep -qxF overlay /etc/initramfs-tools/modules; then
+    echo overlay >> /etc/initramfs-tools/modules
+    if update-initramfs -u >/dev/null 2>&1; then
+      echo "      initramfs 再生成完了（次回起動から overlay が実際にマウントされる）"
+    else
+      echo "      !! update-initramfs 失敗。手動で 'sudo update-initramfs -u' を。"
+    fi
+  else
+    echo "      既に overlay 追加済み（変更なし）"
+  fi
+else
+  echo "      /etc/initramfs-tools/modules が無いためスキップ"
 fi
 
 echo "============================================================"
