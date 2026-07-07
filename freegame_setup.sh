@@ -18,8 +18,17 @@
 set -euo pipefail
 [ "$(id -u)" = "0" ] || { echo "!! root で実行してください: sudo bash $0 $*"; exit 1; }
 
-# --- ホスト名を決定（引数なしならハード固有の CPUシリアル末尾から生成） -----
-HOST="${1:-}"
+# --- 引数解釈: ホスト名 と -y(確認省略。setup.sh から呼ばれる時用) --------
+ASSUME_YES="${ASSUME_YES:-0}"
+HOST=""
+for a in "$@"; do
+  case "$a" in
+    -y|--yes) ASSUME_YES=1 ;;
+    -*) echo "!! 不明なオプション: $a"; exit 1 ;;
+    *) HOST="$a" ;;
+  esac
+done
+# --- ホスト名を決定（未指定ならハード固有の CPUシリアル末尾から生成） -----
 if [ -z "$HOST" ]; then
   SER="$(awk '/Serial/{print $3}' /proc/cpuinfo | tail -1)"
   SUF="${SER: -6}"; SUF="${SUF:-$(date +%s 2>/dev/null || echo x)}"
@@ -37,8 +46,12 @@ echo "   machine-id   : 再生成"
 echo "   SSHホスト鍵  : 再生成"
 echo "   キオスク硬化 : ダイアログ源ウィジェットを除去（パネル本体は残す）"
 echo "============================================================"
-read -r -p "実行しますか? [y/N] " ans
-[ "$ans" = "y" ] || [ "$ans" = "Y" ] || { echo "中止しました。"; exit 0; }
+if [ "$ASSUME_YES" = 1 ]; then
+  echo "（-y 指定のため確認を省略して実行します）"
+else
+  read -r -p "実行しますか? [y/N] " ans
+  [ "$ans" = "y" ] || [ "$ans" = "Y" ] || { echo "中止しました。"; exit 0; }
+fi
 
 # --- 1. ホスト名 -----------------------------------------------------------
 echo "[1/4] ホスト名を $HOST に設定"

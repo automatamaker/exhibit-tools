@@ -1,85 +1,126 @@
 # exhibit-tools — 科学館展示アーケード機のセットアップ用ツール
 
-クローンで増やしたラズパイ筐体を、1台ずつ「その機体専用」に初期化するための
-スクリプト集。
+無料ゲーム展示機（全21台・ゲーム8種）を、git を正本に「1台ずつ・その機体専用」に
+仕立てるためのスクリプト集。クローン由来の重複値の解消、キオスク硬化、ゲームの
+配線、オーバーレイ保護までを一連で行う。
 
-## 背景
+## 前提と全体像
 
-無料ゲーム機（21台）は、前の機体を1台ずつクローンしながら作ったため、
-本来ユニークであるべき値が重複している：
+- **ハード/OS**: Raspberry Pi 5 / Debian 13 (trixie) / labwc(wayland) + wf-panel-pi。筐体ユーザは `game`。
+- **ゲーム8種**: earth_defender / mohs_code / deep_earth / cloud_buster / gravity_meteor /
+  ryuhyo_jump / aqua_solitaire / four_seasons（基本各3台、2台/1台のものもある）。
+- **git**: 各ゲームは `github.com/automatamaker/<ゲーム名>` を正本とする。exhibit-tools も同 org。
+- **クローン機に claude code は不要**。セットアップは自己完結スクリプト（対話メニュー）で行う。
+- **オーバーレイFS**（raspi-config方式）で展示中はSDを読取専用保護。設定変更時だけOFFにする。
+
+各ゲームは「完成版がある1台（完成機）」から git に公開し（**publish**）、残りの機体は
+そこから取得して各機専用に仕立てる（**provision**）。
+
+## 使い方 A: 完成機 — ゲームを git に公開する（各ゲーム1回）
+
+完成版ゲームを持つ機体で、そのゲームを正本として公開する。
+
+```bash
+# 0) オーバーレイをOFF（既にOFFならスキップ）。反映のため一度再起動。
+sudo raspi-config nonint disable_overlayfs && sudo reboot
+
+# 1) exhibit-tools を取得/更新
+git clone https://github.com/automatamaker/exhibit-tools.git   # 初回。以降は git pull
+cd exhibit-tools
+
+# 2) まず内容確認（非破壊。何も書かず/pushしない）
+bash publish_game.sh --dry-run ~/earth_defender
+
+# 3) 本番公開（確認プロンプトあり）
+bash publish_game.sh ~/earth_defender
+```
+
+`publish_game.sh` は自動で: `.gitignore` 整備（ログ/`__pycache__`/`.venv`/実行時スコアを除外）→
+`requirements.txt` 検出/整備（pygame/pymunk/numpy 等の依存を記録）→ `games.conf` に起動方法を
+登録 → `github.com/automatamaker/<ゲーム名>` を作成して push → `games.conf` を exhibit-tools に push。
+
+> 公開後、その完成機自身も展示機にするなら、続けて「使い方 B」を実行する（ゲームは既に
+> あるので clone は走らない）。
+
+## 使い方 B: 各機 — 展示機として仕立てる（全機で1回）
+
+クローン機（および公開を終えた完成機）を、選んだゲーム専用の展示機にする。
+
+```bash
+# 0) オーバーレイをOFF（展示から下ろした直後など。反映のため一度再起動）
+sudo raspi-config nonint disable_overlayfs && sudo reboot
+
+# 1) exhibit-tools を取得/更新
+git clone https://github.com/automatamaker/exhibit-tools.git   # 初回。以降は git pull
+cd exhibit-tools
+
+# 2) まず内容確認（非破壊。clone/固有値/overlay/reboot を行わない）
+bash setup.sh --dry-run
+
+# 3) 本番（対話でゲームと号機を選ぶ→最終確認1回→固有値再生成・硬化・配線・overlay ON・再起動）
+bash setup.sh
+```
+
+`setup.sh` の流れ: ①ゲームを選ぶ（games.conf の一覧から番号）→ ②号機番号を入れて
+機体名 `<ゲーム名>-NN`（例 `earthdefender-02`）を決める → ③`~/<ゲーム>` が無ければ
+git clone（有れば pull 可）→ ④依存を確認、不足なら `.venv` を作って導入 → **最終確認1回** →
+⑤`~/.config/labwc/autostart` を `run_game.sh <ゲーム>` に配線（既存はバックアップ）→
+⑥`freegame_setup.sh` で hostname/machine-id/SSH鍵 を再生成＋キオスク硬化 → ⑦オーバーレイON→再起動。
+
+再起動後、`bash check_identity.sh` で他機と固有値が異なることを確認できる。
+
+### 機体名の規約
+
+`<ゲーム名>-NN`（例 `earthdefender-01` / `mohscode-02`）。LAN上で「どの機体がどのゲームの
+何号機か」が名前で分かる。ホスト名にアンダースコアは使えない（RFC1123/mDNS）ため `_` は自動除去。
+**同じゲームの号機番号がダブらないよう、台↔名前の対応表を手元で管理すること**（スクリプトは
+全台を横断で把握できない）。
+
+## スクリプト一覧
+
+| ファイル | 役割 |
+|---|---|
+| `publish_game.sh` | 【完成機】ゲームを git 化して `automatamaker/<game>` に公開。依存と起動方法も記録。`--dry-run` 可 |
+| `setup.sh` | 【各機】ゲーム/号機を選び、取得・依存導入・autostart配線・固有値再生成・硬化・overlay ON・再起動を1本で。`--dry-run` 可 |
+| `run_game.sh` | 展示機の autostart から呼ばれ、`games.conf` を見てゲームを起動（`.sh`はそのまま/`.py`はvenv優先） |
+| `games.conf` | 各ゲームの起動方法一覧（publish_game.sh が登録）。setup.sh / run_game.sh が参照 |
+| `freegame_setup.sh` | hostname・machine-id・SSHホスト鍵を各機ごとに再生成し、最後に `kiosk_harden.sh` を適用。`-y`で確認省略 |
+| `kiosk_harden.sh` | パネルの `connect`/`bluetooth`/`updater` ウィジェットだけを除去。パネル本体・スタートメニュー・WiFiアイコン(netman)は残す。冪等・`--revert`可 |
+| `check_identity.sh` | hostname / machine-id / SSH鍵指紋 / CPUシリアル / MAC を表示（読み取り専用の診断） |
+
+## 背景: なぜ固有値の再生成が要るか
+
+無料ゲーム機は前の機体を1台ずつクローンして作ったため、本来ユニークであるべき値が重複している：
 
 - **ホスト名**（同じ → 同一LAN上で識別できない）
 - **machine-id**（同じ → DHCP リース衝突・journald 異常）
 - **SSH ホスト鍵**（同じ → セキュリティ上 NG・接続警告）
 
-これらを各機で作り直すのが `freegame_setup.sh`。あわせて、ゲーム実行中に
-WiFi 接続先を尋ねるウィンドウ等が前面に出て操作不能になる事象を根本から防ぐ
-**キオスク硬化**（`kiosk_harden.sh`）も同時に適用する（1回の実行で完了）。
+これらを各機で作り直すのが `freegame_setup.sh`。ハード固有値（CPUシリアル・MAC）はクローンでも
+必ず異なるので、`check_identity.sh` で重複判定の基準に使える。
 
-> **データ永続化（スコア・設定）について**: スコアや音量を保存する無料ゲームは、
-> ゲーム側で `/boot/firmware`（overlayFS の対象外パーティション）に書く実装に
-> なっており、overlay を有効化しても残る。**このツールはデータ永続化には関与せず、
-> 固有設定の作り直しだけを行う。** `/data` パーティションの追加も不要。
-
-## 使い方（各機で1回）
-
-```bash
-git clone <このリポジトリのURL>          # 初回。2回目以降は git pull
-cd exhibit-tools
-
-# 現状の固有値を確認（重複していないか・読み取り専用）
-bash check_identity.sh
-
-# 固有値を作り直す（ホスト名は CPU シリアルから自動生成）
-sudo bash freegame_setup.sh
-#   ホスト名を明示したい場合:
-#   sudo bash freegame_setup.sh pinball-01
-
-sudo reboot
-```
-
-再起動後にもう一度 `bash check_identity.sh` を実行し、他機と値が異なることを確認する。
-
-## スクリプト
-
-| ファイル | 役割 |
-|---|---|
-| `check_identity.sh` | hostname / machine-id / SSH鍵指紋 / CPUシリアル / MAC を表示（読み取り専用の診断） |
-| `freegame_setup.sh` | hostname・machine-id・SSHホスト鍵を各機ごとに再生成し、最後に `kiosk_harden.sh` を適用 |
-| `kiosk_harden.sh` | パネルの `connect`/`bluetooth`/`updater` ウィジェットだけをパネル設定から除く。パネル本体・スタートメニュー・**WiFiアイコン(netman)** は残す（現地でWiFi接続先を選べるように）。冪等・`--revert` 可 |
+> **データ永続化（スコア・設定）について**: スコアや音量を保存する無料ゲームは、ゲーム側で
+> `/boot/firmware`（overlayFS の対象外パーティション）に書く実装のため、overlay を有効化しても残る。
+> 本ツールはデータ永続化には関与しない。
 
 ## キオスク硬化（kiosk_harden.sh）
 
-ゲーム実行中に「WiFi 接続先を尋ねるウィンドウ」が前面に出て操作不能になる事象の
-根本対策。`freegame_setup.sh` から自動で呼ばれるので通常は個別実行不要だが、単体でも使える。
+ゲーム実行中に更新通知・Bluetooth・RPi Connect のダイアログが前面に出るのを、根本（出させない）で防ぐ。
 
-```bash
-sudo bash kiosk_harden.sh            # 適用（freegame_setup.sh が内部で実行）
-bash kiosk_harden.sh --revert        # 既定パネル（全ウィジェット）に戻す
-```
-
-- **何をするか（2026-06-25 再改訂・外科的最小化）**: 上部パネル（wf-panel-pi）とデスクトップは
-  **残したまま**、不要/ダイアログを出すウィジェットだけをユーザのパネル設定
-  `~/.config/wf-panel-pi/wf-panel-pi.ini`（システム既定 `/etc/xdg/wf-panel-pi/wf-panel-pi.ini`
-  を上書き）から除去する。除去対象は `connect`（RPi Connect）・`bluetooth`・`updater`（更新通知）。
-  **スタートメニュー(smenu)・時計・音量・電源・USB取り出し・WiFiアイコン(netman) は温存**。
-- **WiFiアイコン(netman)は残す**: 各地に分散設置したとき、現地でキーボード/マウス→パネルの
-  WiFiアイコンから接続先を選べる必要があるため。当初は「ゲーム中にWiFiダイアログを出す元凶」
-  として外したが、接続先選択UIまで消える副作用が大きく、残す方針に変更。CLI派は `sudo nmtui` /
-  `nmcli device wifi connect` でも選べる。**もしゲーム中ダイアログ再発時は別途対処**。
-- **なぜパネルを丸ごと止めないか**: パネルを消すと現地でキーボード/マウス→GUI 保守が
-  できなくなる（展示後に各地へ分散設置する想定では SSH より現地GUIの方が楽）。
-- **WiFi は切れない**: NetworkManager デーモンは別に常駐し、保存接続（psk-flags=0=平文
-  システム保存）を自律再接続するため。
-- **旧版からの移行**: 旧 kiosk_harden はパネル/デスクトップ自体を無効化し polkit を
-  マスクしていた。本版を上書き実行すると、それらを取り消して（`.orig` 復元・マスク解除）
-  ウィジェット除去方式へ移行する。`--revert` は既定パネルへ戻す。
-- 反映は次回 labwc セッション開始（再起動/再ログイン）から。稼働中に即反映したいときは
-  `pkill -x wf-panel-pi`（lwrespawn が新設定で再起動）。
+- **何をするか（外科的最小化）**: 上部パネル（wf-panel-pi）とデスクトップは**残したまま**、
+  ダイアログを出すウィジェットだけを `~/.config/wf-panel-pi/wf-panel-pi.ini`（システム既定
+  `/etc/xdg/wf-panel-pi/wf-panel-pi.ini` を上書き）から除去する。除去対象は
+  `connect`（RPi Connect）・`bluetooth`・`updater`（更新通知）。
+- **WiFiアイコン(netman)・スタートメニュー・時計・音量・電源・USB取り出しは温存**。各地に分散
+  設置したとき現地でWiFi接続先を選べる必要があるため。CLI派は `sudo nmtui` でも可。
+- **WiFiは切れない**: NetworkManager デーモンが常駐し保存接続（psk平文システム保存）を自律再接続する。
+- 反映は次回 labwc セッション開始（再起動/再ログイン）から。稼働中に即反映は `pkill -x wf-panel-pi`。
+- クローンで焼き込まれた Chromium のシングルトン残骸も掃除する（パネルの地球儀で Chromium が開かない事象の防止）。
+- `bash kiosk_harden.sh --revert` で既定パネルへ戻す。
 
 ## 注意
 
-- `freegame_setup.sh` はゲーム本体・ゲーム選択 autostart には触らない（固有値の再生成と
-  キオスク硬化のみ）。
-- ハード固有値（CPUシリアル・MAC）はクローンでも必ず異なるので、重複判定の基準に使える。
+- `setup.sh` / `publish_game.sh` は**オーバーレイOFF（書込可）**の状態で実行すること。
+- リポジトリは既定で **private**（`publish_game.sh` 冒頭 `VISIBILITY`）。
+- `game02` は開発機であり、展示時は別途コインゲーム化する（本リポジトリ外の手順）。無料機21台には含まない。
 - コイン機（有料ゲーム）の展開には別途 overlay + /data パーティションの手順がある（本リポジトリ外）。
