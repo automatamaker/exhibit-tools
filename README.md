@@ -84,6 +84,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/automatamaker/exhibit-tools/
 | `publish_game.sh` | 【完成機】ゲームを git 化して `automatamaker/<game>` に公開。依存と起動方法も記録。`--dry-run` 可 |
 | `setup.sh` | 【各機】ゲーム/号機を選び、取得・依存導入・autostart配線・固有値再生成・硬化・overlay ON・再起動を1本で。`--dry-run` 可 |
 | `run_game.sh` | 展示機の autostart から呼ばれ、`games.conf` を見てゲームを起動（`.sh`はそのまま/`.py`はvenv優先） |
+| `fix_double_launch.sh` | ゲームの二重起動源（別 autostart/.desktop 等）を探して無効化。setup.sh が自動実行。可逆 |
+| `wifi_prefer_24g.sh` | 指定SSID(既定 automaton)のWiFiを 2.4GHz(band=bg) に固定＝遅い5G回避。setup.sh が自動実行。単体でも可 |
 | `games.conf` | 各ゲームの起動方法一覧（publish_game.sh が登録）。setup.sh / run_game.sh が参照 |
 | `freegame_setup.sh` | hostname・machine-id・SSHホスト鍵を各機ごとに再生成し、最後に `kiosk_harden.sh` を適用。`-y`で確認省略 |
 | `kiosk_harden.sh` | パネルの `connect`/`bluetooth`/`updater` ウィジェットだけを除去。パネル本体・スタートメニュー・WiFiアイコン(netman)は残す。冪等・`--revert`可 |

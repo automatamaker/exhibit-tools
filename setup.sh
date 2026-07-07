@@ -44,6 +44,7 @@ TOOLS="$(cd "$(dirname "$0")" && pwd)"
 CONF="${GAMES_CONF:-$TOOLS/games.conf}"      # テスト時は GAMES_CONF で差し替え可
 ORG="automatamaker"
 HOME_DIR="${HOME:-/home/$(id -un)}"
+WIFI_24G_SSID="automaton"    # このSSID(部分一致)のWiFiを2.4GHz固定＝遅い5G回避。空文字で無効
 
 # 依存の import 名 -> pip パッケージ名
 # 注: RPi は Pi 5 では classic RPi.GPIO が動かない（system は rpi-lgpio シム）。
@@ -210,6 +211,12 @@ printf '%s\n' "$NEW_AUTOSTART" > "$AUTOSTART"
 # される（放置すると2重起動＝片方が入力を専有し画面が遷移しない事故になる）。
 echo "[二重起動対策] 他のゲーム起動源を走査・無効化"
 bash "$TOOLS/fix_double_launch.sh" --skip-overlay-check | sed 's/^/      /' || true
+
+# --- 5c. WiFi 2.4GHz固定（automaton の遅い5Gを避ける） ----------------------
+if [ -n "$WIFI_24G_SSID" ]; then
+  echo "[wifi] 2.4GHz固定（対象SSID部分一致: $WIFI_24G_SSID）"
+  SSID_MATCH="$WIFI_24G_SSID" bash "$TOOLS/wifi_prefer_24g.sh" | sed 's/^/      /' || true
+fi
 
 # --- 6. 固有値再生成＋キオスク硬化 ----------------------------------------
 echo "[固有値] sudo freegame_setup.sh -y $HOST"
