@@ -46,10 +46,12 @@ ORG="automatamaker"
 HOME_DIR="${HOME:-/home/$(id -un)}"
 
 # 依存の import 名 -> pip パッケージ名
+# 注: RPi は Pi 5 では classic RPi.GPIO が動かない（system は rpi-lgpio シム）。
+#     venv に入れる場合も rpi-lgpio を使う。
 declare -A PKG_MAP=(
   [pygame]=pygame [pymunk]=pymunk [numpy]=numpy [scipy]=scipy
   [serial]=pyserial [PIL]=pillow [cv2]=opencv-python [requests]=requests
-  [gpiozero]=gpiozero [RPi]=RPi.GPIO [evdev]=evdev [pyautogui]=pyautogui
+  [gpiozero]=gpiozero [RPi]=rpi-lgpio [evdev]=evdev [pyautogui]=pyautogui
   [pygame_gui]=pygame_gui [yaml]=pyyaml [dotenv]=python-dotenv
 )
 
@@ -164,13 +166,12 @@ dep_check() {
     read -r -p "   $GAME_DIR/.venv を作成して導入しますか? [Y/n] " a
     if [ "$a" = "n" ] || [ "$a" = "N" ]; then echo "   スキップ（起動しない可能性あり。手動導入してください）"; return; fi
   fi
-  python3 -m venv "$GAME_DIR/.venv"
-  # pygame 等は system-site があると衝突しにくいが、確実性優先で venv 単独に入れる
-  if [ -f "$GAME_DIR/requirements.txt" ]; then
-    "$GAME_DIR/.venv/bin/pip" install -r "$GAME_DIR/requirements.txt"
-  else
-    "$GAME_DIR/.venv/bin/pip" install "${missing[@]}"
-  fi
+  # --system-site-packages が重要:
+  #  - system の pygame/numpy/RPi.GPIO(rpi-lgpio シム) をそのまま使い、venv には不足分だけ入れる
+  #  - requirements.txt を丸ごと入れない（RPi.GPIO と書かれていると PyPI の classic 版が
+  #    venv に入り、Pi 5 では動かず system のシムを覆い隠して起動不能になるため）
+  python3 -m venv --system-site-packages "$GAME_DIR/.venv"
+  "$GAME_DIR/.venv/bin/pip" install "${missing[@]}"
   echo "   導入完了（run_game.sh は .venv を自動優先します）"
 }
 dep_check

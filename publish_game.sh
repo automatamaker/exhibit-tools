@@ -36,9 +36,10 @@ MARK_END="# <<< exhibit-tools publish_game.sh <<<"
 declare -A PKG_MAP=(
   [pygame]=pygame [pymunk]=pymunk [numpy]=numpy [scipy]=scipy
   [serial]=pyserial [pyserial]=pyserial [PIL]=pillow [cv2]=opencv-python
-  [requests]=requests [gpiozero]=gpiozero [RPi]=RPi.GPIO [evdev]=evdev
+  [requests]=requests [gpiozero]=gpiozero [RPi]=rpi-lgpio [evdev]=evdev
   [pyautogui]=pyautogui [pygame_gui]=pygame_gui [yaml]=pyyaml [dotenv]=python-dotenv
 )
+# ※ RPi→rpi-lgpio: Pi 5 では classic RPi.GPIO が動かないため、記録する依存もシム側にする
 
 EXHIBIT_TOOLS="$(cd "$(dirname "$0")" && pwd)"
 GAMES_CONF="$EXHIBIT_TOOLS/games.conf"
@@ -67,6 +68,14 @@ say " ゲーム公開: $GAME_NAME"
 say "   ディレクトリ : $GAME_DIR"
 say "   公開先       : github.com/$ORG/$GAME_NAME ($VISIBILITY)"
 say "============================================================"
+
+# --- 前置チェック: gh 認証と git credential helper（push が途中で死なないように） ---
+if [ "$DRY" = 0 ]; then
+  command -v gh >/dev/null 2>&1 || { say "!! gh (GitHub CLI) がありません。導入してから再実行してください。"; exit 1; }
+  gh auth status >/dev/null 2>&1 || { say "!! gh が未ログインです。'gh auth login' でログインしてから再実行してください。"; exit 1; }
+  # https push 用の credential helper を設定（冪等。未設定の完成機で git push が失敗するのを防ぐ）
+  gh auth setup-git >/dev/null 2>&1 || true
+fi
 
 # ゲームらしさの軽い確認（main.py も *.sh も無ければ止める）
 # 注: `ls main.py *.sh` は片方が無いだけで ls 全体が非ゼロ終了するため使わない。

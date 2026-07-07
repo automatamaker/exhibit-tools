@@ -35,6 +35,8 @@ ryuhyo_jump / aqua_solitaire / four_seasons`。git は `github.com/automatamaker
 
 5. **ゲームを公開**: `bash ~/exhibit-tools/publish_game.sh --yes ~/<ゲーム名>`
    - 失敗したら**停止して報告**（再起動しない）。
+   - 「gh が未ログイン」で失敗した場合は、ユーザに `! gh auth login` を実行してもらってから再実行する
+     （対話ログインは claude では行えない）。
 
 6. **展示機に仕立てる**:
    `bash ~/exhibit-tools/setup.sh --game <ゲーム名> --instance <NN> --yes --no-reboot`

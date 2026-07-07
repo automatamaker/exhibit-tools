@@ -28,6 +28,12 @@ if [ "$OV" = 0 ]; then
   exit 1
 fi
 
+# git が無ければ導入（クローン機の系譜次第で無い可能性に備える）
+if ! command -v git >/dev/null 2>&1; then
+  echo "[tools] git が無いため導入します"
+  sudo apt-get install -y git || { echo "!! git を導入できません（ネットワークを確認）"; exit 1; }
+fi
+
 # exhibit-tools を用意
 if [ -d "$DIR/.git" ]; then
   echo "[tools] 既存 exhibit-tools を更新"
