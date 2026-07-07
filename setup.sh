@@ -102,27 +102,43 @@ REPO="https://github.com/$ORG/$GAME"
 echo
 echo "  ゲーム   : $GAME"
 echo "  機体名   : $HOST"
-echo "  ディレクトリ: $GAME_DIR $( [ -d "$GAME_DIR" ] && echo '(既存→pull可)' || echo '(無し→clone)')"
+if [ -d "$GAME_DIR/.git" ]; then DST="(既存git→最新化)"; elif [ -d "$GAME_DIR" ]; then DST="(古い版あり→退避して最新取得)"; else DST="(無し→取得)"; fi
+echo "  ディレクトリ: $GAME_DIR $DST"
 echo
 
-# --- 3. ゲーム取得（clone/pull）は破壊的でないので確認前に実施 -------------
-ensure_game() {
-  if [ ! -d "$GAME_DIR" ]; then
-    echo "[取得] $ORG/$GAME を取得"
-    if [ "$DRY" = 1 ]; then echo "   (dry-run) clone は行いません"; return; fi
-    # private repo でも取れるよう gh を優先。無ければ git https。
-    if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-      gh repo clone "$ORG/$GAME" "$GAME_DIR" -- -q || { echo "!! clone 失敗（完成機で publish_game.sh 済みか確認）"; exit 1; }
-    else
-      git clone -q "$REPO" "$GAME_DIR" || { echo "!! clone 失敗（private repo は gh ログインが必要。完成機で publish 済みか・gh auth を確認）"; exit 1; }
-    fi
+# --- 3. ゲーム取得/更新 ----------------------------------------------------
+# クローン機は同名フォルダに「古い版」を持っている。最新(＝1号機が git に公開した版)へ更新する:
+#   .git 有      → git pull で最新化
+#   .git 無(古いコピー) → フォルダを退避(.old.<日時>)して最新を clone
+#   フォルダ無し  → 最新を clone
+# ※ 退避する古い版は消さずに残す（スコア等の実行時ファイルは元々 .gitignore 対象）。
+clone_fresh() {
+  # private でも取れるよう gh 優先。無ければ git https（ゲームrepoが public である前提）。
+  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    gh repo clone "$ORG/$GAME" "$GAME_DIR" -- -q || { echo "!! 取得失敗（完成機で publish_game.sh 済みか確認）"; exit 1; }
   else
-    if [ "$DRY" = 1 ]; then echo "   (dry-run) 既存ディレクトリ。pull 確認は本番のみ"
-    elif [ "$YES" = 1 ]; then echo "[取得] $GAME_DIR は既存。そのまま使用（--yes のため pull しない）"
-    else
-      read -r -p "[取得] $GAME_DIR は既存。最新に git pull しますか? [y/N] " a
-      if [ "$a" = "y" ] || [ "$a" = "Y" ]; then git -C "$GAME_DIR" pull --ff-only || echo "   (pull はスキップ/失敗。既存のまま続行)"; fi
-    fi
+    git clone -q "$REPO" "$GAME_DIR" || { echo "!! 取得失敗（ゲームrepoが public か・完成機で publish 済みかを確認）"; exit 1; }
+  fi
+}
+ensure_game() {
+  if [ "$DRY" = 1 ]; then
+    if [ -d "$GAME_DIR/.git" ]; then echo "   (dry-run) 既存 git を pull で最新化"
+    elif [ -d "$GAME_DIR" ]; then echo "   (dry-run) 既存の古いフォルダを退避して最新を clone"
+    else echo "   (dry-run) 最新を clone"; fi
+    return
+  fi
+  if [ -d "$GAME_DIR/.git" ]; then
+    echo "[取得] 既存 git チェックアウトを最新へ更新"
+    git -C "$GAME_DIR" pull --ff-only || echo "   (最新化スキップ。既存のまま続行)"
+  elif [ -d "$GAME_DIR" ]; then
+    bak="$GAME_DIR.old.$(date +%Y%m%d-%H%M%S)"
+    echo "[取得] 既存の古いフォルダを退避: $bak"
+    mv "$GAME_DIR" "$bak"
+    echo "[取得] 最新を取得: $ORG/$GAME"
+    clone_fresh
+  else
+    echo "[取得] 最新を取得: $ORG/$GAME"
+    clone_fresh
   fi
 }
 ensure_game
