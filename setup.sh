@@ -177,16 +177,67 @@ dep_check() {
 }
 dep_check
 
-# --- autostart に書く内容（プレビュー用に生成） ---------------------------
+# --- ゲームの既存自動起動を検出（重要：二重起動防止） ---------------------
+# 完成機/クローン機は元々ゲームを自動起動する仕組み（多くは systemd サービス）を
+# 持っている。そこへ我々が別の起動を足すと2重起動になり、片方が入力/画面を専有して
+# 「音は鳴るが画面が遷移しない」等の事故になる。既存起動を検出したら配線しない。
 AUTOSTART="$HOME_DIR/.config/labwc/autostart"
-NEW_AUTOSTART="$(printf 'fcitx5 -d &\n%s/run_game.sh %s &\n' "$TOOLS" "$GAME")"
+EXISTING_LAUNCH=""
+detect_existing_launch() {
+  local svc u f
+  # 1) ゲームを指す「有効な」systemd サービス（system / user）
+  for svc in $(sudo grep -rIlE "/$GAME/|/$GAME |play_${GAME}\.sh|${GAME}/main\.py|WorkingDirectory=.*/${GAME}([/[:space:]]|$)" \
+                 /etc/systemd/system /lib/systemd/system /etc/systemd/user "$HOME_DIR/.config/systemd/user" 2>/dev/null); do
+    u="$(basename "$svc")"
+    if systemctl is-enabled "$u" >/dev/null 2>&1 || systemctl --user is-enabled "$u" >/dev/null 2>&1; then
+      EXISTING_LAUNCH="systemd:$u"; return 0
+    fi
+  done
+  # 2) autostart 系（存在＝起動される）。我々の run_game 行は除外して判定
+  for f in /etc/xdg/labwc/autostart "$HOME_DIR/.config/labwc/autostart" \
+           /etc/xdg/autostart/*.desktop "$HOME_DIR/.config/autostart"/*.desktop \
+           /etc/xdg/lxsession/*/autostart "$HOME_DIR/.config/lxsession"/*/autostart /etc/rc.local; do
+    [ -f "$f" ] || continue
+    if grep -vE 'exhibit-tools/run_game' "$f" 2>/dev/null | grep -qE "/$GAME/|play_${GAME}\.sh|${GAME}/main\.py"; then
+      EXISTING_LAUNCH="$f"; return 0
+    fi
+  done
+  # 3) crontab（@reboot 等）
+  if { crontab -l 2>/dev/null; sudo crontab -l 2>/dev/null; } | grep -vE '^[[:space:]]*#' | grep -qE "/$GAME/|${GAME}/main\.py|play_${GAME}"; then
+    EXISTING_LAUNCH="cron"; return 0
+  fi
+  return 1
+}
+detect_existing_launch || true
+
+# 既存を壊さず run_game 行を追記（既存起動が無い機体のみのフォールバック）
+wire_run_game() {
+  mkdir -p "$(dirname "$AUTOSTART")"; touch "$AUTOSTART"
+  if ! grep -q "run_game.sh $GAME" "$AUTOSTART" 2>/dev/null; then
+    grep -q '^fcitx5' "$AUTOSTART" 2>/dev/null || echo 'fcitx5 -d &' >> "$AUTOSTART"
+    echo "$TOOLS/run_game.sh $GAME &" >> "$AUTOSTART"
+  fi
+}
+# 過去に我々が入れた run_game 配線を除去（二重起動の後始末）
+unwire_run_game() {
+  [ -f "$AUTOSTART" ] || return 0
+  if grep -q 'exhibit-tools/run_game.sh' "$AUTOSTART" 2>/dev/null; then
+    cp -a "$AUTOSTART" "$AUTOSTART.bak.$(date +%Y%m%d-%H%M%S)"
+    grep -v 'exhibit-tools/run_game.sh' "$AUTOSTART" > "$AUTOSTART.tmp" && mv "$AUTOSTART.tmp" "$AUTOSTART"
+    echo "   過去に入れた run_game 配線を除去（$AUTOSTART）"
+  fi
+}
 
 # --- 5〜7 をまとめて最終確認（1回） --------------------------------------
 echo
 echo "============================================================"
 echo " ここから下は機体を書き換えます（この後 再起動します）:"
-echo "   autostart 配線 : $AUTOSTART を↓に置換（既存はバックアップ）"
-printf '%s\n' "$NEW_AUTOSTART" | sed 's/^/       | /'
+if [ -n "$EXISTING_LAUNCH" ]; then
+  echo "   ゲーム起動   : 既存の自動起動を尊重（$EXISTING_LAUNCH）→ 起動は配線しない"
+  grep -q 'exhibit-tools/run_game' "$AUTOSTART" 2>/dev/null && echo "                  （過去に入れた run_game 配線があれば除去）"
+else
+  echo "   ゲーム起動   : 既存の自動起動なし → run_game.sh を追記配線（既存内容は保持）"
+fi
 echo "   固有値再生成   : hostname=$HOST, machine-id, SSHホスト鍵（＋キオスク硬化）"
 echo "   オーバーレイ   : ON（sudo raspi-config nonint enable_overlayfs）"
 echo "   最後に         : $( [ "$NO_REBOOT" = 1 ] && echo '（--no-reboot: 再起動は保留）' || echo 'sudo reboot' )"
@@ -200,17 +251,15 @@ if [ "$YES" = 0 ]; then
   [ "$ans" = "y" ] || [ "$ans" = "Y" ] || { echo "中止しました（clone/venv は残っています）。"; exit 0; }
 fi
 
-# --- 5. autostart 配線 -----------------------------------------------------
-echo "[配線] $AUTOSTART"
-mkdir -p "$(dirname "$AUTOSTART")"
-[ -f "$AUTOSTART" ] && cp -a "$AUTOSTART" "$AUTOSTART.bak.$(date +%Y%m%d-%H%M%S)"
-printf '%s\n' "$NEW_AUTOSTART" > "$AUTOSTART"
-
-# --- 5b. 二重起動源の無効化 -------------------------------------------------
-# 機体によってはゲームが /etc/xdg/labwc/autostart や XDG .desktop 等からも起動
-# される（放置すると2重起動＝片方が入力を専有し画面が遷移しない事故になる）。
-echo "[二重起動対策] 他のゲーム起動源を走査・無効化"
-bash "$TOOLS/fix_double_launch.sh" --skip-overlay-check | sed 's/^/      /' || true
+# --- 5. ゲーム起動の設定（既存を尊重・二重起動を作らない） ------------------
+echo "[起動設定]"
+if [ -n "$EXISTING_LAUNCH" ]; then
+  echo "   既存の自動起動を検出（$EXISTING_LAUNCH）→ 競合を避けるため配線しない"
+  unwire_run_game    # 過去に我々が run_game を入れていたら除去（二重起動の後始末）
+else
+  echo "   既存の自動起動なし → run_game.sh を追記配線（既存内容は保持）"
+  wire_run_game
+fi
 
 # --- 5c. WiFi 2.4GHz固定（automaton の遅い5Gを避ける） ----------------------
 if [ -n "$WIFI_24G_SSID" ]; then
