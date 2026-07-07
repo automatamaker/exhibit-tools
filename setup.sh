@@ -56,6 +56,17 @@ declare -A PKG_MAP=(
 [ "$DRY" = 1 ] && echo "※ DRY-RUN: clone/依存導入/固有値再生成/overlay/reboot は行いません（選択と生成内容の確認のみ）"
 [ -f "$CONF" ] || { echo "!! $CONF がありません"; exit 1; }
 
+# --- 事前チェック: オーバーレイが ON だと書込めない（このスクリプトは書込みが必要） ---
+if [ "$DRY" = 0 ]; then
+  OV="$(sudo raspi-config nonint get_overlay_now 2>/dev/null || echo 1)"
+  if [ "$OV" = 0 ]; then
+    echo "!! オーバーレイが ON（読取専用）です。書込みできないので先に OFF にして再起動してください:"
+    echo "     sudo raspi-config nonint disable_overlayfs && sudo reboot"
+    echo "   再起動後にもう一度このセットアップを実行してください。"
+    exit 1
+  fi
+fi
+
 # --- 1. ゲーム選択 ---------------------------------------------------------
 mapfile -t GAMES < <(grep -vE '^[[:space:]]*(#|$)' "$CONF" | awk -F= '{k=$1; gsub(/^[ \t]+|[ \t]+$/,"",k); if(k!="") print k}')
 if [ "${#GAMES[@]}" -eq 0 ]; then
@@ -97,9 +108,14 @@ echo
 # --- 3. ゲーム取得（clone/pull）は破壊的でないので確認前に実施 -------------
 ensure_game() {
   if [ ! -d "$GAME_DIR" ]; then
-    echo "[取得] git clone $REPO"
+    echo "[取得] $ORG/$GAME を取得"
     if [ "$DRY" = 1 ]; then echo "   (dry-run) clone は行いません"; return; fi
-    git clone "$REPO" "$GAME_DIR" || { echo "!! clone 失敗（repo が未公開？ 完成機で publish_game.sh 済みか確認）"; exit 1; }
+    # private repo でも取れるよう gh を優先。無ければ git https。
+    if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+      gh repo clone "$ORG/$GAME" "$GAME_DIR" -- -q || { echo "!! clone 失敗（完成機で publish_game.sh 済みか確認）"; exit 1; }
+    else
+      git clone -q "$REPO" "$GAME_DIR" || { echo "!! clone 失敗（private repo は gh ログインが必要。完成機で publish 済みか・gh auth を確認）"; exit 1; }
+    fi
   else
     if [ "$DRY" = 1 ]; then echo "   (dry-run) 既存ディレクトリ。pull 確認は本番のみ"
     elif [ "$YES" = 1 ]; then echo "[取得] $GAME_DIR は既存。そのまま使用（--yes のため pull しない）"
