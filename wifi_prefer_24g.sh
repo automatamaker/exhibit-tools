@@ -45,7 +45,9 @@ while IFS= read -r uuid; do
   fi
   echo "  |$name| (SSID=|$ssid|): band=${curband:-未設定} → bg に固定"
   if [ "$DRY" = 0 ]; then
-    if sudo nmcli connection modify "$uuid" 802-11-wireless.band bg 802-11-wireless.channel 0 2>/dev/null; then
+    # band=bg のみ設定（channel 0 は nmcli バージョンにより '0 is not a valid channel' で
+    # 失敗するため付けない。automaton プロファイルは channel 未指定なので band=bg だけで2.4固定になる）
+    if sudo nmcli connection modify "$uuid" 802-11-wireless.band bg 2>/dev/null; then
       changed=1
     else
       echo "    !! 変更失敗（$name）: 手動で 'sudo nmcli connection modify \"$name\" 802-11-wireless.band bg' を試してください"
