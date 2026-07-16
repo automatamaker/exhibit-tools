@@ -9,13 +9,20 @@
 #    5) この機体の接続情報（Computer/User/IP/Edition）を表示
 #  実行後、表示された IP と User を Pi 側の担当（claude）に伝えれば、あとは遠隔で全自動。
 #
-#  実行方法（どちらでも可）:
-#    ・スタート→「Windows PowerShell」を右クリック→「管理者として実行」→本ファイルの中身を貼り付け
-#    ・またはファイルを置いて:  PowerShell を管理者で開き
-#         Set-ExecutionPolicy -Scope Process Bypass -Force; .\enable_ssh.ps1
+#  実行方法（「管理者として実行」した PowerShell で、ラクなものを1つ。手打ちでOK）:
+#    A) Piから取得（短い）:  irm http://<PiのIP>/e | iex
+#    B) GitHubから取得:      irm https://raw.githubusercontent.com/automatamaker/exhibit-tools/master/win/enable_ssh.ps1 | iex
+#    C) ファイルを置いて:    Set-ExecutionPolicy -Scope Process Bypass -Force; .\enable_ssh.ps1
+#  ※ PowerShell への貼り付けは「右クリック」。まず必ず「管理者として実行」で開くこと。
 # ============================================================================
-#Requires -RunAsAdministrator
 $ErrorActionPreference = 'Stop'
+
+# 管理者権限チェック（irm|iex でも動くよう #Requires は使わない）
+$__admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
+if (-not $__admin) {
+    Write-Host '【要・管理者】PowerShell を「管理者として実行」で開き直してから、もう一度実行してください。' -ForegroundColor Red
+    return
+}
 
 # ---- Pi(展示セットアップ機) の公開鍵。埋め込み済み。差し替え不要 ----
 $PiPubKey = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDEGGdPA0u592Wpw1t8HPZ/OJUB7U2egpCAReV/IcbMf winfleet@gamedev'
